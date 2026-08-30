@@ -1,96 +1,60 @@
-# Materia
+# Example Materia Repository
 
-[![Chat on Matrix](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#materia:saintnet.tech)
+This is an example Materia repository. It can be used as a reference while creating your own repository.
 
-A GitOps tool for managing services and applications deployed as [Podman Quadlets](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html).
+A Materia repository contains the components and secrets used by your hosts. For example, if you were to run `materia update` on host `ivy`, here's what would happen:
 
-Materia handles the full lifecycle of an application (or **component**):
-1. Materia polls a remote source, downloading a manifest describing what the state of the applications on the host should look like.
-2. It installs components and all their associated Quadlets and data files, templating files with variables and secrets if required
-3. It starts services required by the component.
-4. When updated files are found in the source repository it updates the installed versions and restarts services accordingly.
-5. And when a component is not longer assigned to a host, it stops all related services and removes the resources, keeping things nice and tidy.
+This assumes all default file paths are used.
 
-Curious to how it works? See the `materia update` [workflow diagram](./diagram.md)
+1. Materia would clone this repository to `/var/lib/materia/source`, or run `git pull` if the repository is already cloned.
+2. It would check the repository's `MANIFEST.toml` to see what components were assigned to `ivy`
+3. It would see `ivy` has the `base` role assigned to it. The `base` role contains the `beszel-agent` component.
+4. It would copy all files in `./components/beszel-agent/` to their destination places. In this case, it's just a single quadlet resource `beszel-agent.container.gomtpl`, which would be installed as `/etc/containers/systemd/beszel-agent/beszel-agent.container`.
+5. It would start all services listed in `./components/beszel-agent/MANIFEST.toml`. In this case, it's just a single service `beszel-agent.service`.
 
-# Documentation
+## Repository manifest
+The file `./MANIFEST.toml` is called the **repository manifest** or **Materia manifest**. It holds metadata about the repository; namely what **secrets engine** to use and what **components** are assigned to each host or **role**.
 
-Main Documentation site: [primamateria.systems](https://primamateria.systems)
+Every repository must have a manifest, even if it's empty.
 
-Quickstart guide: [On the documentation website](https://primamateria.systems/quickstart.html).
+## Components
+The `./components/` directory contains the bread and butter of a Materia repository, the **components**. Components are collections of files (or **resources** ) that are installed and removed together. They also contain a `MANIFEST.toml` file, containing metadata like what services should be started and what default **secrets** the component contains.
 
-Online Manpages: [latest](https://primamateria.systems/documentation/latest/reference/)
+Every component **must** have a manifest file, even if it's empty.
 
-Example Materia Repository: [here](https://github.com/stryan/materia_example_repo)
+This repository contains the following components:
 
-Example Materia Component: [dnsmasq component here](https://github.com/stryan/dnsmasq_component)
-
-# Installation
-
-## Requirements
-
-The following are run time requirements and reflect what systems Materia is tested on. It may work without the specified versions (especially the systemd requirement).
-
-Materia will not work with Podman versions lower than 4.4, as that is the version Quadlets were introduced in.
-
-- Podman 5.4 or higher
-- Systemd v254 or higher
-- AMD64 or ARM64 architecture
-
-Materia supports running both root-full and rootless quadlets, however currently root-full is the more tested pathway.
-
-Note: When running in a container Materia uses the Podman remote API; therefore some features may be limited by the host's Podman API version (i.e. the container may have Podman 5.8 but if the host is 5.3 you can't use volume backups).
-
-If you are using dbus locking with `dbus-broker`, you will need to install the ./install/systems.primamateria.materia.conf config file.
-
-## From source
-Build from source using `mise build`. By default this will generate binaries for amd64 and arm64.
-
-If you'd like to build without mise, you can do so through the normal go methods such as: `go build -ldflags="-w -s" -o bin/materia-arm64 ./cmd/materia/`
-
-## From Binary
-
-Grab a release for your architecture from the releases page; the static binaries should work on any relatively recent Linux distro.
-
-## With Podman
-
-For obvious reasons, materia should only be run using `podman` as your container engine.
-
-By default it is assumed you are running using root. If not, you'll need to update the bind mounts to their appropriate locations; see the [manual](./docs/markdown/reference/index.md) for more details. By default materia uses XDG_DIR settings in rootless mode.
 ```
-podman run --name materia --rm \
-	--hostname <system_hostname> \
-	--network host \
-	--security-opt label=disable \ # optional, depending on OS security settings
-	-v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \ # needed to manage systemd units
-	-v /run/podman/podman.sock:/run/podman/podman.sock \ # needed to get container status
-	-v /var/lib/materia:/var/lib/materia \ # Where materia stores its source cache and component data
-	-v /etc/containers/systemd:/etc/containers/systemd \ # needed to install Quadlets
-	-v /usr/local/bin:/usr/local/bin \ # customizable, change to where ever you want scripts to be installed to
-	-v /etc/systemd/system:/etc/systemd/system \ # Needed to manage services, can also use /usr/local/lib/systemd/system/
-	-v /etc/materia/known_hosts:/root/.ssh/known_hosts:ro \ #Optional, used for git+ssh checkouts
-	-v /etc/materia/key.txt:/etc/materia/key.txt \ #Optional, used for age decryption
-	-v /etc/materia/materia_key:/etc/materia/materia_key \ # Optional, used for git+ssh checkouts
-	--env MATERIA_AGE__KEYFILE=/etc/materia/key.txt \
-	--env MATERIA_SOURCE__KIND="git" \
-	--env MATERIA_SOURCE__URL=https://github.com/stryan/materia_example_repo \
-	ghcr.io/stryan/materia:stable update
+# beszel-agent and beszel-sever are two "real" components in that they represent what an actual component would like like.
+./components/beszel-agent/
+./components/beszel-server/
+# hello is an example component that demonstrates as many resource types and other settings as possible for a component.
+./components/hello/
 ```
 
-Note that some security settings may need to be adjusted based off your distro. For example, systems using AppArmor may require `PodmanArgs=--security-opt=apparmor=unconfined`.
+## Attributes
 
-See [install](./install/) for example Quadlets.
+**Attributes** are variables in a resource. Attributes are templated at run time and can be stored either as a `default` in the Component manifest or in the repository's **attibutes engine**. Defaults are stored unencrypted, while the attributes engines are usually encrypted.
 
-### Available tags
+For example, a common attribute is the `containerTag` attribute, representing what container tag the quadlet should use. It is often found in resources like so:
 
-**stable**: Use the latest tagged release.
+`Image=docker.io/henrygd/beszel:{{.containerTag}}`
 
-**v<tag>**: Specific tagged release.
+Components usually define a default value like so:
 
-**latest**: Latest push to master
+`components/beszel-agent/MANIFEST.toml`:
+```
+[Defaults]
+containerTag = "latest"
 
-# Contributing
+```
 
-Questions or bug reports are welcome! Please start a Discussion versus opening an Issue, as Materia does bug tracking outside of Github using [git-bug](https://github.com/git-bug/git-bug). You can also submit bugs/suggestions or ask questions in the [Matrix room](https://matrix.to/#/#materia:saintnet.tech).
+The `containerTag` variable can also be set in the attributes engine by creating a file `attributes/vault.toml` with the content:
+```
+[components.beszel-agent]
+containerTag = "latest"
+```
 
-For submitting features/bugfixes/code-in general via merge requests, please see the [Contribution guide](CONTRIBUTING.md).
+This will overwrite the `defaults` value, if one is set.
+
+This repository contains example tooling in the `mise.toml.example` file for encrypting `attributes/*.toml` files as `attributes/*.age` files using `mise` tasks. You do not need to do this and can manage age files (or any other attributes engine) using whatever third party tooling you wish.
