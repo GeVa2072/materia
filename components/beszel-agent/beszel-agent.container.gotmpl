@@ -15,7 +15,6 @@ RestartSec=5s
 [Container]
 Image=docker.io/henrygd/beszel-agent:{{.containerTag}}
 ContainerName=beszel-agent
-Environment=KEY="{{.hostkey}}"
 Volume=/var/run/podman/podman.sock:/var/run/docker.sock:ro
 SecurityLabelDisable=true
 Network=host
